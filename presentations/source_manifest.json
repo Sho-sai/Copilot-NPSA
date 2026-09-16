@@ -1,0 +1,169 @@
+{
+  "as_of": "2026-09-16",
+  "analyzed_commit": "5e0752cda97174fede0d634b310db7d68d3707e1",
+  "index": "docs/00_INDEX.md",
+  "account_count": 52,
+  "documents": [
+    {
+      "path": "docs/01_トヨタ自動車 TMC.md"
+    },
+    {
+      "path": "docs/02_DENSO 本体.md"
+    },
+    {
+      "path": "docs/03_AISIN 本体.md"
+    },
+    {
+      "path": "docs/04_マツダ Mazda.md"
+    },
+    {
+      "path": "docs/05_スバル Subaru.md"
+    },
+    {
+      "path": "docs/06_豊田通商 TTC.md"
+    },
+    {
+      "path": "docs/07_トヨタ紡織 Toyota Boshoku 本体.md"
+    },
+    {
+      "path": "docs/08_トヨタ車体 Toyota Shatai.md"
+    },
+    {
+      "path": "docs/09_豊田自動織機 TICO.md"
+    },
+    {
+      "path": "docs/10_愛三工業.md"
+    },
+    {
+      "path": "docs/11_トヨタコニックプロ.md"
+    },
+    {
+      "path": "docs/12_ダイハツ.md"
+    },
+    {
+      "path": "docs/13_ジェイテクト.md"
+    },
+    {
+      "path": "docs/14_カヤバ.md"
+    },
+    {
+      "path": "docs/15_トヨタコネクティッド.md"
+    },
+    {
+      "path": "docs/16_トヨタ自動車九州.md"
+    },
+    {
+      "path": "docs/17_株式会社東海理化.md"
+    },
+    {
+      "path": "docs/18_プライムプラネットエナジー&ソリューションズ株式会社.md"
+    },
+    {
+      "path": "docs/19_トヨタ自動車北海道株式会社.md"
+    },
+    {
+      "path": "docs/20_トヨタテクニカルディベロップメント株式会社.md"
+    },
+    {
+      "path": "docs/21_トヨタ自動車東日本.md"
+    },
+    {
+      "path": "docs/22_トヨタ不動産.md"
+    },
+    {
+      "path": "docs/23_トヨタファイナンス.md"
+    },
+    {
+      "path": "docs/24_トヨタホーム.md"
+    },
+    {
+      "path": "docs/25_豊田中央研究所.md"
+    },
+    {
+      "path": "docs/26_TMNA.md"
+    },
+    {
+      "path": "docs/27_Aisin World America.md"
+    },
+    {
+      "path": "docs/28_TMHNA(TINA).md"
+    },
+    {
+      "path": "docs/29_JTEKT.md"
+    },
+    {
+      "path": "docs/30_SUBARU US.md"
+    },
+    {
+      "path": "docs/31_TFS.md"
+    },
+    {
+      "path": "docs/32_TMMC.md"
+    },
+    {
+      "path": "docs/33_SIA.md"
+    },
+    {
+      "path": "docs/34_SCI.md"
+    },
+    {
+      "path": "docs/35_Bastian.md"
+    },
+    {
+      "path": "docs/36_TAI.md"
+    },
+    {
+      "path": "docs/37_TGNA.md"
+    },
+    {
+      "path": "docs/38_Toyota Colombia.md"
+    },
+    {
+      "path": "docs/39_Carolina Handling.md"
+    },
+    {
+      "path": "docs/40_Abel Womack.md"
+    },
+    {
+      "path": "docs/41_NAL.md"
+    },
+    {
+      "path": "docs/42_MACI.md"
+    },
+    {
+      "path": "docs/43_Cascade.md"
+    },
+    {
+      "path": "docs/44_Shiroki.md"
+    },
+    {
+      "path": "docs/45_TOYOTA MOTOR EUROPE.md"
+    },
+    {
+      "path": "docs/46_VANDERLANDE.md"
+    },
+    {
+      "path": "docs/47_TMHE.md"
+    },
+    {
+      "path": "docs/48_CFAO.md"
+    },
+    {
+      "path": "docs/49_TAL.md"
+    },
+    {
+      "path": "docs/50_TFS.md"
+    },
+    {
+      "path": "docs/51_TOYOTA MOTOR ASIA.md"
+    },
+    {
+      "path": "docs/52_TMCA.md"
+    }
+  ],
+  "limitations": [
+    "台帳の有償/無償/合計は活動ユーザー・新規受注ではない。",
+    "source documents may contain inconsistent, absent, or truncated passages ([...]); these are not reconstructed.",
+    "価格、包装、権利、契約条件は営業が確認する。"
+  ]
+}

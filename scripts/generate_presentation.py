@@ -23,10 +23,11 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 OUT = ROOT / "presentations"
-PPTX = OUT / "M365_Copilot_License_Expansion_ISD_Strategy_20260916.pptx"
+AS_OF_ISO = "2026-09-16"
+PPTX = OUT / f"M365_Copilot_License_Expansion_ISD_Strategy_{AS_OF_ISO.replace('-', '')}.pptx"
 MATRIX = OUT / "account_evidence_matrix.csv"
 MANIFEST = OUT / "source_manifest.json"
-AS_OF = "2026年9月16日"
+AS_OF = AS_OF_ISO.replace("-", "年", 1).replace("-", "月", 1) + "日"
 EXPECTED_ACCOUNT_COUNT = 52
 EXPECTED_INTRO_SLIDES = 23
 W, H = Inches(13.333), Inches(7.5)
@@ -93,6 +94,10 @@ def lines_for(path):
     return path.read_text(encoding="utf-8").splitlines()
 
 
+def field(lines, prefix, default):
+    return next((x.split(":", 1)[1].strip() for x in lines if x.startswith(prefix)), default)
+
+
 def accounts():
     result = []
     for path in sorted(DOCS.glob("*.md")):
@@ -100,20 +105,20 @@ def accounts():
             continue
         lines = lines_for(path)
         title = next((x[2:].strip() for x in lines if x.startswith("# ")), path.stem)
-        region = next((x.split(":", 1)[1].strip() for x in lines if x.startswith("- リージョン:")), "不明")
+        region = field(lines, "- リージョン:", "不明")
         # The source has two distinct documents headed simply "TFS"; keep them
         # unambiguous in the evidence matrix and appendix.
         if title == "TFS":
             title = f"TFS {region}"
-        usage = next((x.split(":", 1)[1].strip() for x in lines if x.startswith("- 総ユーザー数:")), "記載なし")
-        licenses = next((x.split(":", 1)[1].strip() for x in lines if x.startswith("- Copilot 有償:")), "記載なし")
+        usage = field(lines, "- 総ユーザー数:", "記載なし")
+        licenses = field(lines, "- Copilot 有償:", "記載なし")
         # Keep a source excerpt verbatim (apart from whitespace) and preserve truncation marks.
         start = next((i for i, x in enumerate(lines) if x.startswith("### 2026/09")), None)
         if start is None or any("記載なし" in x for x in lines[start + 1:start + 4]):
-            start = next((i for i, x in enumerate(lines) if x.startswith("### 2026/07")), 0)
-        source_date = re.sub(r"^###\s*", "", lines[start]).strip() if start < len(lines) else "日付不明"
+            start = next((i for i, x in enumerate(lines) if x.startswith("### 2026/07")), None)
+        source_date = re.sub(r"^###\s*", "", lines[start]).strip() if start is not None else "日付不明"
         excerpt, refs = [], []
-        for i in range(start + 1, len(lines)):
+        for i in range((start + 1) if start is not None else len(lines), len(lines)):
             x = clean(lines[i])
             if x.startswith("### ") or x.startswith("## ") or x.startswith("---"):
                 if excerpt:
@@ -125,7 +130,7 @@ def accounts():
             if len(" ".join(excerpt)) >= 120:
                 break
         evidence = " ".join(excerpt)[:260] or "顧客フィードバックの具体記載なし"
-        line_ref = f"{min(refs)}–{max(refs)}" if refs else "1–6"
+        line_ref = f"{min(refs)}–{max(refs)}" if refs else "該当なし"
         profile = PROFILES.get(title, ("要確認", "購入意思・障害の確認", "資料の根拠が限定的",
                                        "決裁者・予算・対象・成功基準を確認→必要時に限定支援", "低"))
         result.append({
@@ -211,7 +216,7 @@ def write_artefacts(data, commit, appendix_start):
                              "source_excerpt": a["evidence"], "license_header": a["licenses"], "decision_label": a["decision"],
                              "commercial_barrier": a["barrier"], "isd_proposal": a["isd"], "support_to_purchase_chain": a["chain"],
                              "confidence": a["confidence"], "appendix_slide": i})
-    MANIFEST.write_text(json.dumps({"as_of": "2026-09-16", "analyzed_commit": commit, "index": "docs/00_INDEX.md",
+    MANIFEST.write_text(json.dumps({"as_of": AS_OF_ISO, "analyzed_commit": commit, "index": "docs/00_INDEX.md",
                                     "account_count": len(data), "documents": [{"path": a["path"]} for a in data],
                                     "limitations": ["台帳の有償/無償/合計は活動ユーザー・新規受注ではない。",
                                                     "原資料には不整合、欠損、または切れた記述（[...]）があり、補完していない。",
@@ -222,22 +227,30 @@ def write_artefacts(data, commit, appendix_start):
 def validate(data):
     with zipfile.ZipFile(PPTX) as z:
         bad = z.testzip()
-        assert bad is None, f"corrupt ZIP member: {bad}"
+        if bad is not None:
+            raise ValueError(f"corrupt ZIP member: {bad}")
         slides = [x for x in z.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", x)]
-        assert len(slides) == len(data) + EXPECTED_INTRO_SLIDES, f"unexpected slide count: {len(slides)}"
+        if len(slides) != len(data) + EXPECTED_INTRO_SLIDES:
+            raise ValueError(f"unexpected slide count: {len(slides)}")
         for name in slides:
             ET.fromstring(z.read(name))
     reopened = Presentation(PPTX)
-    assert len(reopened.slides) == len(data) + EXPECTED_INTRO_SLIDES
-    assert len(data) == EXPECTED_ACCOUNT_COUNT
-    assert all(a["name"] for a in data)
-    assert not any("TODO" in shape.text for slide in reopened.slides for shape in slide.shapes if hasattr(shape, "text"))
+    if len(reopened.slides) != len(data) + EXPECTED_INTRO_SLIDES or len(data) != EXPECTED_ACCOUNT_COUNT:
+        raise ValueError("slide or account count validation failed")
+    if not all(a["name"] for a in data):
+        raise ValueError("empty account name")
+    if any("TODO" in shape.text for slide in reopened.slides for shape in slide.shapes if hasattr(shape, "text")):
+        raise ValueError("unresolved placeholder found")
 
 
 def generate():
     data = accounts()
-    assert len(data) == EXPECTED_ACCOUNT_COUNT, f"index scope mismatch: {len(data)} account files"
-    commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    if len(data) != EXPECTED_ACCOUNT_COUNT:
+        raise ValueError(f"index scope mismatch: {len(data)} account files")
+    try:
+        commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
+    except subprocess.CalledProcessError:
+        commit = "unknown (not generated from a git checkout)"
     prs = Presentation(); prs.slide_width, prs.slide_height = W, H
     main_slide(prs, "Microsoft ライセンス拡大とISD支援機会", f"{AS_OF}｜52アカウントの資料統合｜顧客内部情報を含む／取扱注意",
                ["目的：実際のMicrosoft 365 Copilot利用定着を起点に、有償ライセンスの継続・拡大機会を見極める。",
@@ -308,7 +321,8 @@ def generate():
     main_slide(prs, "付録の読み方と出典管理", "全52アカウントを1枚ずつ掲載。詳細な追跡はCSV/manifestで行う",
                ["各カードは資料内日付、台帳ヘッダー、短い原文抜粋、障壁、推薦、次の確認を表示する。", "原文のファイル・行範囲は各スライド下部に表示。全行・コミット・全件対応は account_evidence_matrix.csv と source_manifest.json に記録。",
                 "本資料はMicrosoft公式の推奨・価格表・商用コミットメントではない。"])
-    assert len(prs.slides) == EXPECTED_INTRO_SLIDES
+    if len(prs.slides) != EXPECTED_INTRO_SLIDES:
+        raise ValueError(f"unexpected intro slide count: {len(prs.slides)}")
     write_artefacts(data, commit, len(prs.slides) + 1)
     for a in data:
         appendix_slide(prs, a)

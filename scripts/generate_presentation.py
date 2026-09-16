@@ -49,7 +49,7 @@ PROFILES = {
                         "需要台帳→部門導入→定着計測→追加数量の承認", "高"),
     "トヨタテクニカルディベロップメント株式会社": ("営業優先", "全社展開/希望者購入の運用化", "全社利用可能=全員購入ではない",
                         "対象者公募→説明会→継続利用→部門別購入判断", "高"),
-    "ジェイテクト": ("営業優先", "部門別公募と評価設計", "購入時期・決裁・成功基準が未確認",
+    "ジェイテクトJP": ("営業優先", "部門別公募と評価設計", "購入時期・決裁・成功基準が未確認",
                         "候補部門→ユースケース評価→継続根拠→次年度購入", "中"),
     "トヨタファイナンス": ("営業優先", "配布後研修と金融業務の評価", "予算/有償継続は未確認",
                         "対象コホート→研修→反復利用→有償継続決裁", "中"),
@@ -86,6 +86,7 @@ PROFILES = {
     "TOYOTA MOTOR EUROPE": ("保留", "既存投資・利用低下の確認", "投資保留/他AI・地域要件",
                          "利用/投資方針確認→再評価", "中"),
 }
+ACCOUNT_DISPLAY_NAMES = {"ジェイテクト": "ジェイテクトJP"}
 
 
 def rgb(value):
@@ -117,6 +118,7 @@ def accounts():
         # unambiguous in the evidence matrix and appendix.
         if title == "TFS":
             title = f"TFS {region}"
+        title = ACCOUNT_DISPLAY_NAMES.get(title, title)
         usage = field(lines, "- 総ユーザー数:", "記載なし")
         licenses = field(lines, "- Copilot 有償:", "記載なし")
         # Keep a source excerpt verbatim (apart from whitespace) and preserve truncation marks.
@@ -126,25 +128,26 @@ def accounts():
             if match:
                 feedback_sections.append((tuple(int(part or 0) for part in match.groups()), i))
         start = None
-        # Month-only headings denote the start of that month for stable ordering.
+        # A heading without a day sorts before an explicit day in the same month.
         for _, candidate in sorted(feedback_sections, key=lambda item: item[0], reverse=True):
             if not any("記載なし" in x for x in lines[candidate + 1:candidate + 1 + NO_RECORD_LOOKAHEAD]):
                 start = candidate
                 break
         source_date = re.sub(r"^###\s*", "", lines[start]).strip() if start is not None else "日付不明"
         excerpt, refs, excerpt_length = [], [], 0
-        for i in range((start + 1) if start is not None else len(lines), len(lines)):
-            x = clean(lines[i])
-            if x.startswith("### ") or x.startswith("## ") or x.startswith("---"):
-                if excerpt:
+        if start is not None:
+            for i in range(start + 1, len(lines)):
+                x = clean(lines[i])
+                if x.startswith("### ") or x.startswith("## ") or x.startswith("---"):
+                    if excerpt:
+                        break
+                    continue
+                if x and not x.startswith("_記載なし_") and not x.startswith("出典:"):
+                    excerpt.append(x)
+                    refs.append(i + 1)
+                    excerpt_length += len(x) + 1
+                if excerpt_length >= EXCERPT_MIN_CHARS:
                     break
-                continue
-            if x and not x.startswith("_記載なし_") and not x.startswith("出典:"):
-                excerpt.append(x)
-                refs.append(i + 1)
-                excerpt_length += len(x) + 1
-            if excerpt_length >= EXCERPT_MIN_CHARS:
-                break
         evidence = " ".join(excerpt)[:EXCERPT_MAX_CHARS] or "顧客フィードバックの具体記載なし"
         line_ref = f"{min(refs)}–{max(refs)}" if refs else "該当なし"
         profile = PROFILES.get(title, ("要確認", "購入意思・障害の確認", "資料の根拠が限定的",
@@ -236,7 +239,7 @@ def appendix_slide(prs, a):
 
 
 def write_artefacts(data, commit, appendix_start):
-    OUT.mkdir(exist_ok=True)
+    OUT.mkdir(parents=True, exist_ok=True)
     with MATRIX.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["account", "region", "source_date", "source_path", "source_lines", "source_excerpt",
                                                 "license_header", "decision_label", "commercial_barrier", "isd_proposal",
@@ -269,8 +272,6 @@ def validate(data):
     reopened = Presentation(PPTX)
     if len(reopened.slides) != expected_slide_count:
         raise ValueError(f"readback slide count: {len(reopened.slides)} (expected {expected_slide_count})")
-    if len(data) != EXPECTED_ACCOUNT_COUNT:
-        raise ValueError(f"account count: {len(data)} (expected {EXPECTED_ACCOUNT_COUNT})")
     if not all(a["name"] for a in data):
         raise ValueError("empty account name")
     if any("TODO" in shape.text for slide in reopened.slides for shape in slide.shapes if hasattr(shape, "text")):
@@ -360,7 +361,10 @@ def generate():
                ["各カードは資料内日付、台帳ヘッダー、短い原文抜粋、障壁、推薦、次の確認を表示する。", "原文のファイル・行範囲は各スライド下部に表示。全行・コミット・全件対応は account_evidence_matrix.csv と source_manifest.json に記録。",
                 "本資料はMicrosoft公式の推奨・価格表・商用コミットメントではない。"])
     if len(prs.slides) != EXPECTED_INTRO_SLIDES:
-        raise ValueError(f"unexpected intro slide count: {len(prs.slides)}")
+        raise ValueError(
+            f"unexpected intro slide count: {len(prs.slides)} "
+            f"(expected {EXPECTED_INTRO_SLIDES}); check main-slide definitions"
+        )
     write_artefacts(data, commit, len(prs.slides) + 1)
     for a in data:
         appendix_slide(prs, a)

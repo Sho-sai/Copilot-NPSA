@@ -126,10 +126,12 @@ def accounts():
         for i, line in enumerate(lines):
             match = FEEDBACK_HEADING.match(line)
             if match:
+                # Missing days sort as day zero, before dated updates in the same month.
                 feedback_sections.append((tuple(int(part or 0) for part in match.groups()), i))
         start = None
         # A heading without a day sorts before an explicit day in the same month.
         for _, candidate in sorted(feedback_sections, key=lambda item: item[0], reverse=True):
+            # Account files place the blank marker immediately below the heading (within 3 lines).
             if not any("記載なし" in x for x in lines[candidate + 1:candidate + 1 + NO_RECORD_LOOKAHEAD]):
                 start = candidate
                 break
@@ -146,8 +148,8 @@ def accounts():
                     excerpt.append(x)
                     refs.append(i + 1)
                     excerpt_length += len(x) + 1
-                if excerpt_length >= EXCERPT_MIN_CHARS:
-                    break
+                    if excerpt_length >= EXCERPT_MIN_CHARS:
+                        break
         evidence = " ".join(excerpt)[:EXCERPT_MAX_CHARS] or "顧客フィードバックの具体記載なし"
         line_ref = f"{min(refs)}–{max(refs)}" if refs else "該当なし"
         profile = PROFILES.get(title, ("要確認", "購入意思・障害の確認", "資料の根拠が限定的",
@@ -259,6 +261,7 @@ def write_artefacts(data, commit, appendix_start):
 
 
 def validate(data):
+    """Check ZIP integrity, XML, slide count, and unresolved placeholders."""
     expected_slide_count = len(data) + EXPECTED_INTRO_SLIDES
     with zipfile.ZipFile(PPTX) as z:
         bad = z.testzip()

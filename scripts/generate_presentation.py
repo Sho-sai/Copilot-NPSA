@@ -27,6 +27,8 @@ PPTX = OUT / "M365_Copilot_License_Expansion_ISD_Strategy_20260916.pptx"
 MATRIX = OUT / "account_evidence_matrix.csv"
 MANIFEST = OUT / "source_manifest.json"
 AS_OF = "2026年9月16日"
+EXPECTED_ACCOUNT_COUNT = 52
+EXPECTED_INTRO_SLIDES = 23
 W, H = Inches(13.333), Inches(7.5)
 NAVY, BLUE, TEAL, LIGHT, MID, RED, AMBER, GREEN, WHITE, GRAY = (
     "17365D", "0078D4", "00A6A6", "F4F7FA", "D9E2F3", "C50F1F",
@@ -84,7 +86,7 @@ def rgb(value):
 
 
 def clean(text):
-    return re.sub(r"\s+", " ", text.replace("・", "・")).strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def lines_for(path):
@@ -107,7 +109,7 @@ def accounts():
         licenses = next((x.split(":", 1)[1].strip() for x in lines if x.startswith("- Copilot 有償:")), "記載なし")
         # Keep a source excerpt verbatim (apart from whitespace) and preserve truncation marks.
         start = next((i for i, x in enumerate(lines) if x.startswith("### 2026/09")), None)
-        if start is None or (start + 1 < len(lines) and "記載なし" in lines[start + 2:start + 4]):
+        if start is None or any("記載なし" in x for x in lines[start + 1:start + 4]):
             start = next((i for i, x in enumerate(lines) if x.startswith("### 2026/07")), 0)
         source_date = re.sub(r"^###\s*", "", lines[start]).strip() if start < len(lines) else "日付不明"
         excerpt, refs = [], []
@@ -172,9 +174,8 @@ def bullets(slide, items, x=.55, y=1.45, w=12.1, h=5.35, size=16):
     tf = shape.text_frame; tf.clear(); tf.word_wrap = True
     for idx, item in enumerate(items):
         p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-        p.text = item; p.font.name = "Noto Sans CJK JP"; p.font.size = Pt(size)
+        p.text = "• " + item; p.font.name = "Noto Sans CJK JP"; p.font.size = Pt(size)
         p.font.color.rgb = rgb(NAVY); p.level = 0; p.space_after = Pt(10)
-        p.text = "• " + item
 
 
 def main_slide(prs, heading, subtitle, items, source="分析・推薦（資料記載と区別）"):
@@ -198,14 +199,14 @@ def appendix_slide(prs, a):
             f"支援 → 運用結果 → 購入/利用拡大（推薦）\n{a['chain']}\n販売優先度は意思・障壁・根拠に基づく定性判断であり、売上額・確率・活動率を示すものではない。", fill="EAF3F8", line=BLUE, size=12)
 
 
-def write_artefacts(data, commit):
+def write_artefacts(data, commit, appendix_start):
     OUT.mkdir(exist_ok=True)
     with MATRIX.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["account", "region", "source_date", "source_path", "source_lines", "source_excerpt",
                                                 "license_header", "decision_label", "commercial_barrier", "isd_proposal",
                                                 "support_to_purchase_chain", "confidence", "appendix_slide"])
         writer.writeheader()
-        for i, a in enumerate(data, start=24):
+        for i, a in enumerate(data, start=appendix_start):
             writer.writerow({"account": a["name"], "region": a["region"], "source_date": a["source_date"], "source_path": a["path"], "source_lines": a["lines"],
                              "source_excerpt": a["evidence"], "license_header": a["licenses"], "decision_label": a["decision"],
                              "commercial_barrier": a["barrier"], "isd_proposal": a["isd"], "support_to_purchase_chain": a["chain"],
@@ -213,7 +214,7 @@ def write_artefacts(data, commit):
     MANIFEST.write_text(json.dumps({"as_of": "2026-09-16", "analyzed_commit": commit, "index": "docs/00_INDEX.md",
                                     "account_count": len(data), "documents": [{"path": a["path"]} for a in data],
                                     "limitations": ["台帳の有償/無償/合計は活動ユーザー・新規受注ではない。",
-                                                    "source documents may contain inconsistent, absent, or truncated passages ([...]); these are not reconstructed.",
+                                                    "原資料には不整合、欠損、または切れた記述（[...]）があり、補完していない。",
                                                     "価格、包装、権利、契約条件は営業が確認する。"]},
                                    ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -223,21 +224,20 @@ def validate(data):
         bad = z.testzip()
         assert bad is None, f"corrupt ZIP member: {bad}"
         slides = [x for x in z.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", x)]
-        assert len(slides) == 75, f"expected 75 slides, found {len(slides)}"
+        assert len(slides) == len(data) + EXPECTED_INTRO_SLIDES, f"unexpected slide count: {len(slides)}"
         for name in slides:
             ET.fromstring(z.read(name))
     reopened = Presentation(PPTX)
-    assert len(reopened.slides) == 75
-    assert len(data) == 52
+    assert len(reopened.slides) == len(data) + EXPECTED_INTRO_SLIDES
+    assert len(data) == EXPECTED_ACCOUNT_COUNT
     assert all(a["name"] for a in data)
     assert not any("TODO" in shape.text for slide in reopened.slides for shape in slide.shapes if hasattr(shape, "text"))
 
 
 def generate():
     data = accounts()
-    assert len(data) == 52, f"index scope mismatch: {len(data)} account files"
+    assert len(data) == EXPECTED_ACCOUNT_COUNT, f"index scope mismatch: {len(data)} account files"
     commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
-    write_artefacts(data, commit)
     prs = Presentation(); prs.slide_width, prs.slide_height = W, H
     main_slide(prs, "Microsoft ライセンス拡大とISD支援機会", f"{AS_OF}｜52アカウントの資料統合｜顧客内部情報を含む／取扱注意",
                ["目的：実際のMicrosoft 365 Copilot利用定着を起点に、有償ライセンスの継続・拡大機会を見極める。",
@@ -308,6 +308,8 @@ def generate():
     main_slide(prs, "付録の読み方と出典管理", "全52アカウントを1枚ずつ掲載。詳細な追跡はCSV/manifestで行う",
                ["各カードは資料内日付、台帳ヘッダー、短い原文抜粋、障壁、推薦、次の確認を表示する。", "原文のファイル・行範囲は各スライド下部に表示。全行・コミット・全件対応は account_evidence_matrix.csv と source_manifest.json に記録。",
                 "本資料はMicrosoft公式の推奨・価格表・商用コミットメントではない。"])
+    assert len(prs.slides) == EXPECTED_INTRO_SLIDES
+    write_artefacts(data, commit, len(prs.slides) + 1)
     for a in data:
         appendix_slide(prs, a)
     prs.save(PPTX)

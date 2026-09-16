@@ -1,6 +1,6 @@
 {
   "as_of": "2026-09-16",
-  "analyzed_commit": "5e0752cda97174fede0d634b310db7d68d3707e1",
+  "analyzed_commit": "d80d890f162d77f8620be10a311efd3b5687c8b6",
   "index": "docs/00_INDEX.md",
   "account_count": 52,
   "documents": [
@@ -163,7 +163,7 @@
   ],
   "limitations": [
     "台帳の有償/無償/合計は活動ユーザー・新規受注ではない。",
-    "source documents may contain inconsistent, absent, or truncated passages ([...]); these are not reconstructed.",
+    "原資料には不整合、欠損、または切れた記述（[...]）があり、補完していない。",
     "価格、包装、権利、契約条件は営業が確認する。"
   ]
 }

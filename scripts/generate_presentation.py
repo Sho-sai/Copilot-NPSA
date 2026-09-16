@@ -6,6 +6,7 @@ Run from any directory: python scripts/generate_presentation.py
 from __future__ import annotations
 
 import csv
+from datetime import date
 import json
 import re
 import subprocess
@@ -27,9 +28,12 @@ AS_OF_ISO = "2026-09-16"
 PPTX = OUT / f"M365_Copilot_License_Expansion_ISD_Strategy_{AS_OF_ISO.replace('-', '')}.pptx"
 MATRIX = OUT / "account_evidence_matrix.csv"
 MANIFEST = OUT / "source_manifest.json"
-AS_OF = AS_OF_ISO.replace("-", "年", 1).replace("-", "月", 1) + "日"
+AS_OF_DATE = date.fromisoformat(AS_OF_ISO)
+AS_OF = f"{AS_OF_DATE.year}年{AS_OF_DATE.month}月{AS_OF_DATE.day}日"
 EXPECTED_ACCOUNT_COUNT = 52
 EXPECTED_INTRO_SLIDES = 23
+NO_RECORD_LOOKAHEAD = 3
+FEEDBACK_HEADING = re.compile(r"^###\s+(\d{4})/(\d{2})(?:/(\d{2}))?")
 W, H = Inches(13.333), Inches(7.5)
 NAVY, BLUE, TEAL, LIGHT, MID, RED, AMBER, GREEN, WHITE, GRAY = (
     "17365D", "0078D4", "00A6A6", "F4F7FA", "D9E2F3", "C50F1F",
@@ -113,9 +117,16 @@ def accounts():
         usage = field(lines, "- 総ユーザー数:", "記載なし")
         licenses = field(lines, "- Copilot 有償:", "記載なし")
         # Keep a source excerpt verbatim (apart from whitespace) and preserve truncation marks.
-        start = next((i for i, x in enumerate(lines) if x.startswith("### 2026/09")), None)
-        if start is None or any("記載なし" in x for x in lines[start + 1:start + 4]):
-            start = next((i for i, x in enumerate(lines) if x.startswith("### 2026/07")), None)
+        feedback_sections = []
+        for i, line in enumerate(lines):
+            match = FEEDBACK_HEADING.match(line)
+            if match:
+                feedback_sections.append((tuple(int(part or 0) for part in match.groups()), i))
+        start = None
+        for _, candidate in sorted(feedback_sections, reverse=True):
+            if not any("記載なし" in x for x in lines[candidate + 1:candidate + 1 + NO_RECORD_LOOKAHEAD]):
+                start = candidate
+                break
         source_date = re.sub(r"^###\s*", "", lines[start]).strip() if start is not None else "日付不明"
         excerpt, refs = [], []
         for i in range((start + 1) if start is not None else len(lines), len(lines)):
@@ -146,14 +157,20 @@ def accounts():
 def add_box(slide, x, y, w, h, text="", fill=WHITE, line=WHITE, size=14, color=NAVY,
             bold=False, valign=MSO_ANCHOR.TOP, margin=0.12):
     shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
-    shape.fill.solid(); shape.fill.fore_color.rgb = rgb(fill)
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = rgb(fill)
     shape.line.color.rgb = rgb(line)
-    tf = shape.text_frame; tf.clear()
+    tf = shape.text_frame
+    tf.clear()
     tf.margin_left = tf.margin_right = Inches(margin)
     tf.margin_top = tf.margin_bottom = Inches(margin)
     tf.vertical_anchor = valign
-    p = tf.paragraphs[0]; p.text = text; p.font.name = "Noto Sans CJK JP"
-    p.font.size = Pt(size); p.font.bold = bold; p.font.color.rgb = rgb(color)
+    p = tf.paragraphs[0]
+    p.text = text
+    p.font.name = "Noto Sans CJK JP"
+    p.font.size = Pt(size)
+    p.font.bold = bold
+    p.font.color.rgb = rgb(color)
     p.alignment = PP_ALIGN.LEFT
     return shape
 
@@ -176,20 +193,29 @@ def title(slide, text, subtitle="", n=1, source=""):
 
 def bullets(slide, items, x=.55, y=1.45, w=12.1, h=5.35, size=16):
     shape = add_box(slide, Inches(x), Inches(y), Inches(w), Inches(h), fill=LIGHT, line=LIGHT, size=size)
-    tf = shape.text_frame; tf.clear(); tf.word_wrap = True
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = True
     for idx, item in enumerate(items):
         p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-        p.text = "• " + item; p.font.name = "Noto Sans CJK JP"; p.font.size = Pt(size)
-        p.font.color.rgb = rgb(NAVY); p.level = 0; p.space_after = Pt(10)
+        p.text = "• " + item
+        p.font.name = "Noto Sans CJK JP"
+        p.font.size = Pt(size)
+        p.font.color.rgb = rgb(NAVY)
+        p.level = 0
+        p.space_after = Pt(10)
 
 
 def main_slide(prs, heading, subtitle, items, source="分析・推薦（資料記載と区別）"):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    n = len(prs.slides); title(slide, heading, subtitle, n, source); bullets(slide, items)
+    n = len(prs.slides)
+    title(slide, heading, subtitle, n, source)
+    bullets(slide, items)
 
 
 def appendix_slide(prs, a):
-    slide = prs.slides.add_slide(prs.slide_layouts[6]); n = len(prs.slides)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    n = len(prs.slides)
     title(slide, f"アカウント詳細｜{a['name']}", f"{a['region']}  |  資料内日付: {a['source_date']}  |  判断: {a['decision']}  |  根拠信頼度: {a['confidence']}", n,
           f"{a['path']}:{a['lines']}（GitHub commit は source_manifest.json を参照）")
     add_box(slide, Inches(.45), Inches(1.42), Inches(3.9), Inches(1.35),
@@ -231,12 +257,15 @@ def validate(data):
             raise ValueError(f"corrupt ZIP member: {bad}")
         slides = [x for x in z.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", x)]
         if len(slides) != len(data) + EXPECTED_INTRO_SLIDES:
-            raise ValueError(f"unexpected slide count: {len(slides)}")
+            raise ValueError(f"unexpected slide count: {len(slides)} (expected {len(data) + EXPECTED_INTRO_SLIDES})")
         for name in slides:
             ET.fromstring(z.read(name))
     reopened = Presentation(PPTX)
-    if len(reopened.slides) != len(data) + EXPECTED_INTRO_SLIDES or len(data) != EXPECTED_ACCOUNT_COUNT:
-        raise ValueError("slide or account count validation failed")
+    expected_slide_count = len(data) + EXPECTED_INTRO_SLIDES
+    if len(reopened.slides) != expected_slide_count:
+        raise ValueError(f"readback slide count: {len(reopened.slides)} (expected {expected_slide_count})")
+    if len(data) != EXPECTED_ACCOUNT_COUNT:
+        raise ValueError(f"account count: {len(data)} (expected {EXPECTED_ACCOUNT_COUNT})")
     if not all(a["name"] for a in data):
         raise ValueError("empty account name")
     if any("TODO" in shape.text for slide in reopened.slides for shape in slide.shapes if hasattr(shape, "text")):
@@ -249,9 +278,10 @@ def generate():
         raise ValueError(f"index scope mismatch: {len(data)} account files")
     try:
         commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, OSError):
         commit = "unknown (not generated from a git checkout)"
-    prs = Presentation(); prs.slide_width, prs.slide_height = W, H
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = W, H
     main_slide(prs, "Microsoft ライセンス拡大とISD支援機会", f"{AS_OF}｜52アカウントの資料統合｜顧客内部情報を含む／取扱注意",
                ["目的：実際のMicrosoft 365 Copilot利用定着を起点に、有償ライセンスの継続・拡大機会を見極める。",
                 "資料根拠と推薦を区別し、規模・無償枠・課題の大きさだけで優先順位を上げない。", "対象資料：docs/00_INDEX.md および全52アカウント文書。"])

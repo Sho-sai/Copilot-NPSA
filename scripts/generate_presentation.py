@@ -33,6 +33,8 @@ AS_OF = f"{AS_OF_DATE.year}年{AS_OF_DATE.month}月{AS_OF_DATE.day}日"
 EXPECTED_ACCOUNT_COUNT = 52
 EXPECTED_INTRO_SLIDES = 23
 NO_RECORD_LOOKAHEAD = 3
+EXCERPT_MIN_CHARS = 120
+EXCERPT_MAX_CHARS = 260
 FEEDBACK_HEADING = re.compile(r"^###\s+(\d{4})/(\d{2})(?:/(\d{2}))?")
 W, H = Inches(13.333), Inches(7.5)
 NAVY, BLUE, TEAL, LIGHT, MID, RED, AMBER, GREEN, WHITE, GRAY = (
@@ -99,7 +101,8 @@ def lines_for(path):
 
 
 def field(lines, prefix, default):
-    return next((x.split(":", 1)[1].strip() for x in lines if x.startswith(prefix)), default)
+    """Return text following an exact document-header prefix."""
+    return next((x[len(prefix):].strip() for x in lines if x.startswith(prefix)), default)
 
 
 def accounts():
@@ -123,12 +126,13 @@ def accounts():
             if match:
                 feedback_sections.append((tuple(int(part or 0) for part in match.groups()), i))
         start = None
-        for _, candidate in sorted(feedback_sections, reverse=True):
+        # Month-only headings denote the start of that month for stable ordering.
+        for _, candidate in sorted(feedback_sections, key=lambda item: item[0], reverse=True):
             if not any("記載なし" in x for x in lines[candidate + 1:candidate + 1 + NO_RECORD_LOOKAHEAD]):
                 start = candidate
                 break
         source_date = re.sub(r"^###\s*", "", lines[start]).strip() if start is not None else "日付不明"
-        excerpt, refs = [], []
+        excerpt, refs, excerpt_length = [], [], 0
         for i in range((start + 1) if start is not None else len(lines), len(lines)):
             x = clean(lines[i])
             if x.startswith("### ") or x.startswith("## ") or x.startswith("---"):
@@ -138,9 +142,10 @@ def accounts():
             if x and not x.startswith("_記載なし_") and not x.startswith("出典:"):
                 excerpt.append(x)
                 refs.append(i + 1)
-            if len(" ".join(excerpt)) >= 120:
+                excerpt_length += len(x) + 1
+            if excerpt_length >= EXCERPT_MIN_CHARS:
                 break
-        evidence = " ".join(excerpt)[:260] or "顧客フィードバックの具体記載なし"
+        evidence = " ".join(excerpt)[:EXCERPT_MAX_CHARS] or "顧客フィードバックの具体記載なし"
         line_ref = f"{min(refs)}–{max(refs)}" if refs else "該当なし"
         profile = PROFILES.get(title, ("要確認", "購入意思・障害の確認", "資料の根拠が限定的",
                                        "決裁者・予算・対象・成功基準を確認→必要時に限定支援", "低"))
@@ -251,17 +256,17 @@ def write_artefacts(data, commit, appendix_start):
 
 
 def validate(data):
+    expected_slide_count = len(data) + EXPECTED_INTRO_SLIDES
     with zipfile.ZipFile(PPTX) as z:
         bad = z.testzip()
         if bad is not None:
             raise ValueError(f"corrupt ZIP member: {bad}")
         slides = [x for x in z.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", x)]
-        if len(slides) != len(data) + EXPECTED_INTRO_SLIDES:
-            raise ValueError(f"unexpected slide count: {len(slides)} (expected {len(data) + EXPECTED_INTRO_SLIDES})")
+        if len(slides) != expected_slide_count:
+            raise ValueError(f"unexpected slide count: {len(slides)} (expected {expected_slide_count})")
         for name in slides:
             ET.fromstring(z.read(name))
     reopened = Presentation(PPTX)
-    expected_slide_count = len(data) + EXPECTED_INTRO_SLIDES
     if len(reopened.slides) != expected_slide_count:
         raise ValueError(f"readback slide count: {len(reopened.slides)} (expected {expected_slide_count})")
     if len(data) != EXPECTED_ACCOUNT_COUNT:
@@ -275,7 +280,10 @@ def validate(data):
 def generate():
     data = accounts()
     if len(data) != EXPECTED_ACCOUNT_COUNT:
-        raise ValueError(f"index scope mismatch: {len(data)} account files")
+        raise ValueError(
+            f"expected {EXPECTED_ACCOUNT_COUNT} account files under docs/ "
+            f"(excluding 00_INDEX.md), found {len(data)}"
+        )
     try:
         commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
     except (subprocess.CalledProcessError, OSError):

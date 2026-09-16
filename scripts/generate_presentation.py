@@ -86,6 +86,7 @@ PROFILES = {
     "TOYOTA MOTOR EUROPE": ("保留", "既存投資・利用低下の確認", "投資保留/他AI・地域要件",
                          "利用/投資方針確認→再評価", "中"),
 }
+# docs/13 is Japan while docs/29 is the distinct Americas JTEKT entity.
 ACCOUNT_DISPLAY_NAMES = {"ジェイテクト": "ジェイテクトJP"}
 
 
@@ -129,8 +130,7 @@ def accounts():
                 # Missing days sort as day zero, before dated updates in the same month.
                 feedback_sections.append((tuple(int(part or 0) for part in match.groups()), i))
         start = None
-        # A heading without a day sorts before an explicit day in the same month.
-        for _, candidate in sorted(feedback_sections, key=lambda item: item[0], reverse=True):
+        for _, candidate in sorted(feedback_sections, key=lambda item: (item[0], item[1]), reverse=True):
             # Account files place the blank marker immediately below the heading (within 3 lines).
             if not any("記載なし" in x for x in lines[candidate + 1:candidate + 1 + NO_RECORD_LOOKAHEAD]):
                 start = candidate
@@ -252,7 +252,9 @@ def write_artefacts(data, commit, appendix_start):
                              "source_excerpt": a["evidence"], "license_header": a["licenses"], "decision_label": a["decision"],
                              "commercial_barrier": a["barrier"], "isd_proposal": a["isd"], "support_to_purchase_chain": a["chain"],
                              "confidence": a["confidence"], "appendix_slide": i})
-    MANIFEST.write_text(json.dumps({"as_of": AS_OF_ISO, "analyzed_commit": commit, "index": "docs/00_INDEX.md",
+    MANIFEST.write_text(json.dumps({"as_of": AS_OF_ISO, "analyzed_commit": commit,
+                                    "analyzed_commit_basis": "PPTX generation started from this pre-generation HEAD.",
+                                    "index": "docs/00_INDEX.md",
                                     "account_count": len(data), "documents": [{"path": a["path"]} for a in data],
                                     "limitations": ["台帳の有償/無償/合計は活動ユーザー・新規受注ではない。",
                                                     "原資料には不整合、欠損、または切れた記述（[...]）があり、補完していない。",
@@ -260,9 +262,8 @@ def write_artefacts(data, commit, appendix_start):
                                    ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def validate(data):
+def validate(data, expected_slide_count):
     """Check ZIP integrity, XML, slide count, and unresolved placeholders."""
-    expected_slide_count = len(data) + EXPECTED_INTRO_SLIDES
     with zipfile.ZipFile(PPTX) as z:
         bad = z.testzip()
         if bad is not None:
@@ -372,7 +373,7 @@ def generate():
     for a in data:
         appendix_slide(prs, a)
     prs.save(PPTX)
-    validate(data)
+    validate(data, len(prs.slides))
     print(f"Generated {PPTX} ({len(prs.slides)} slides), matrix ({len(data)} accounts), manifest at commit {commit}")
 
 

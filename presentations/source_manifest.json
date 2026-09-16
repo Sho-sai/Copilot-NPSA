@@ -1,6 +1,7 @@
 {
   "as_of": "2026-09-16",
-  "analyzed_commit": "c0d63a9f522efa7b462070ff5839fc08d89ad868",
+  "analyzed_commit": "85a9e135b005ad7b41f3c5593bb70c8c85164833",
+  "analyzed_commit_basis": "PPTX generation started from this pre-generation HEAD.",
   "index": "docs/00_INDEX.md",
   "account_count": 52,
   "documents": [
